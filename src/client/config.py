@@ -1,12 +1,11 @@
 from pathlib import Path
 
 # Base directory
-# Get current working directory
-BASE_DIR = Path.cwd()
+BASE_DIR = Path(__file__).resolve().parent
 
 # Data paths
 DATA = BASE_DIR / "data"
-TEST_FILE = DATA / "Paitients_Files_Test.csv"
+TEST_FILE = DATA / "Patients_Files_Test.csv"
 
 # History paths
 HISTORY = DATA / "history"

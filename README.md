@@ -15,6 +15,12 @@ A polished, demo-oriented Streamlit app for exploring binary classification of b
 
 ---
 
+## Live Demo
+
+Check out the deployed app here: [Breast Cancer Prediction AI](https://breast-cancer-prediction-2025.streamlit.app/)
+
+---
+
 ## Quick start
 
 ### Local setup with uv
