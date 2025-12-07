@@ -1,44 +1,79 @@
-# Use slim Python base
-FROM python:3.12.10-slim AS builder
+# ---- Stage 1: Builder ----
+FROM python:3.12-slim AS builder
 
-# Install uv
+# Copy uv binary from Astral's official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set working directory
-WORKDIR /src/client
+# Create app directory
+RUN mkdir /app
+WORKDIR /app
 
-# Copy lockfile and project metadata first (to leverage caching)
-COPY uv.lock pyproject.toml ./
+# Environment optimizations
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Install dependencies only (non-editable, without project source)
+# Install build dependencies (compilers, headers, pkg-config, MySQL client dev libs)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc pkg-config libmariadb-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files first (for caching)
+COPY pyproject.toml uv.lock /app/
+
+# Install dependencies only (no project code yet)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-editable
+    uv sync --locked --no-install-project
 
-# Copy project source
-COPY . .
+# Copy project code
+ADD . /app
 
-# Sync project into environment (non-editable)
+# Sync the project (install app into venv)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable
+    uv sync --locked
 
-# Final stage
-FROM python:3.12.10-slim
+# Precompile bytecode
+ENV UV_COMPILE_BYTECODE=1
 
-WORKDIR /src/client
 
-# Copy virtual environment from builder
-COPY --from=builder /src/client/.venv /src/client/.venv
-COPY . .
+# ---- Stage 2: Runtime ----
+FROM python:3.12-slim
 
-# Ensure venv binaries are on PATH
-ENV PATH="/src/client/.venv/bin:$PATH"
+# Copy uv binary again so runtime stage has it
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Expose app port
+# Create non-root user and app dir
+RUN useradd -m -r appuser && \
+    mkdir /app && \
+    chown -R appuser /app
+
+WORKDIR /app
+
+# Copy app code + .venv together
+COPY --from=builder --chown=appuser:appuser /app /app
+
+# Install only runtime libraries (no compilers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmariadb-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure .venv/bin is first on PATH
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Switch to non-root user
+USER appuser
+
+# Expose the application port
 EXPOSE 8501
 
-# Add healthcheck: curl the Streamlit server root
+# Silence CUDA and oneDNN warnings if not needed
+ENV CUDA_VISIBLE_DEVICES=""
+ENV TF_ENABLE_ONEDNN_OPTS=0
+
+# Healthcheck (adjust endpoint for your app)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
-# Start application
-CMD ["uv", "run", "streamlit", "run", "app.py"]
+# Start application with uv
+CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

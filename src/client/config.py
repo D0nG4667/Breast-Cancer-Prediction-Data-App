@@ -1,7 +1,8 @@
 from pathlib import Path
 
 # Base directory
-BASE_DIR = Path("./")
+# Get current working directory
+BASE_DIR = Path.cwd()
 
 # Data paths
 DATA = BASE_DIR / "data"
