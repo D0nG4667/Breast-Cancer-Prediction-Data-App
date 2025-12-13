@@ -18,6 +18,11 @@ st.set_page_config(
 # Custom CSS
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+# --- Session state for lazy loading ---
+if "model" not in st.session_state:
+    st.session_state.model = None
+    st.session_state.scaler = None
+
 # Load models
 @st.cache_resource
 def load_models():
@@ -28,8 +33,16 @@ def load_models():
     except Exception as e:
         st.error(f"Error loading model or scaler: {e}")
         st.stop()
-
-model, scaler = load_models()
+        
+# Lazy load models only when needed
+def lazy_load_models():
+    if st.session_state.model is None or st.session_state.scaler is None:
+        with st.spinner("Loading AI model..."):
+            st.session_state.model, st.session_state.scaler = load_models()       
+        message = 'Model loaded successfully!'
+        icon = '✅'
+        st.toast(message, icon=icon)
+            
 
 # Header
 st.markdown("""
@@ -109,8 +122,14 @@ if page == "🔍 Single Prediction":
         if st.button("🚀 Make Prediction", use_container_width='stretch', type="primary"):
             st.session_state.predict = True
     
-    if 'predict' in st.session_state and st.session_state.predict:
+    if 'predict' in st.session_state and st.session_state.predict:    
+            
         with st.spinner('Analyzing cell nuclei features...'):
+            # Lazy load models
+            lazy_load_models()   
+            model = st.session_state.model
+            scaler = st.session_state.scaler 
+                   
             # Get all features
             full_input = {}
             for feature in FEATURE_NAMES:
@@ -121,6 +140,7 @@ if page == "🔍 Single Prediction":
             
             # Create DataFrame
             input_df = pd.DataFrame([full_input])
+            
             
             # Scale input
             scaled_input = scaler.transform(input_df)
@@ -210,6 +230,11 @@ elif page == "📈 Batch Prediction":
             
             if st.button("🚀 Process Batch Predictions"):
                 with st.spinner('Processing batch predictions...'):
+                    # Lazy load models
+                    lazy_load_models()   
+                    model = st.session_state.model
+                    scaler = st.session_state.scaler 
+            
                     # Scale and predict
                     scaled_data = scaler.transform(df)
                     predictions = model.predict(scaled_data, verbose=0)
